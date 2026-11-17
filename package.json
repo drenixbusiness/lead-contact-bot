@@ -1,0 +1,21 @@
+{
+  "name": "lead-contact-bot",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Monday leads -> RingCentral first contact -> Google Sheets",
+  "main": "src/index.js",
+  "scripts": {
+    "inspect": "node src/index.js inspect",
+    "dry": "node src/index.js run --dry",
+    "start": "node src/index.js run",
+    "watch": "node src/index.js run --watch",
+    "activity": "node src/index.js activity",
+    "leads": "node src/index.js leads",
+    "test": "node test/logic.test.js"
+  },
+  "dependencies": {
+    "@ringcentral/sdk": "^5.0.0",
+    "dotenv": "^16.4.5",
+    "googleapis": "^144.0.0"
+  }
+}
