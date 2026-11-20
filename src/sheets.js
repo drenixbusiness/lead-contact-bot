@@ -64,9 +64,10 @@ async function openTab(name) {
     title, header, idx, width,
     col: (name) => idx.get(norm(name)),
     toRow,
-    async readAll() {
+    /** extra — sarlavhadan o'ngda yana nechta ustun o'qilsin (masalan status tarixi uchun). */
+    async readAll(extra = 0) {
       const res = await sheetsApi().spreadsheets.values.get({
-        spreadsheetId: cfg.sheets.sheetId, range: `${q(title)}!A2:${colLetter(Math.max(width, 1) - 1)}`,
+        spreadsheetId: cfg.sheets.sheetId, range: `${q(title)}!A2:${colLetter(Math.max(width, 1) - 1 + extra)}`,
         valueRenderOption: 'FORMATTED_VALUE',
       });
       return res.data.values || [];
@@ -96,13 +97,26 @@ async function openTab(name) {
         valueInputOption: 'USER_ENTERED', requestBody: { values: objs.map(toRow) },
       });
     },
-    /** cells = [{ row, key, value }] — bir nechta so'rovda, 1000 tadan. */
+    /** cells = [{ row, key, value }] yoki [{ row, col (0 dan), value }] — 1000 tadan bo'lib yoziladi. */
     async updateCells(cells) {
+      // sheet'da ustun yetmasa — qo'shamiz
+      const maxCol = Math.max(-1, ...cells.map((c) => (c.col !== undefined ? c.col : -1)));
+      if (maxCol >= 0) {
+        const s = sheetsApi();
+        const meta = await s.spreadsheets.get({ spreadsheetId: cfg.sheets.sheetId, fields: 'sheets.properties(sheetId,title,gridProperties.columnCount)' });
+        const p = meta.data.sheets.find((x) => x.properties.title === title).properties;
+        if (p.gridProperties.columnCount < maxCol + 1) {
+          await s.spreadsheets.batchUpdate({
+            spreadsheetId: cfg.sheets.sheetId,
+            requestBody: { requests: [{ appendDimension: { sheetId: p.sheetId, dimension: 'COLUMNS', length: maxCol + 1 - p.gridProperties.columnCount + 5 } }] },
+          });
+        }
+      }
       for (let i = 0; i < cells.length; i += 1000) {
         const data = [];
         for (const c of cells.slice(i, i + 1000)) {
-          const ci = idx.get(norm(c.key));
-          if (ci === undefined || FORBIDDEN.has(norm(c.key))) continue;
+          const ci = c.col !== undefined ? c.col : idx.get(norm(c.key));
+          if (ci === undefined || (c.key && FORBIDDEN.has(norm(c.key)))) continue;
           data.push({ range: `${q(title)}!${colLetter(ci)}${c.row}`, values: [[c.value ?? '']] });
         }
         if (data.length) {

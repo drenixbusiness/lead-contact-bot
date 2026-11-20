@@ -54,19 +54,24 @@ const ix = new Map(header.map((h, i) => [h.toLowerCase(), i]));
 const calls = { append: [], cells: [] };
 const fakeTab = {
   title: 'T', col: (k) => ix.get(k.toLowerCase()),
-  readAll: async () => [['A', 'John', '2026-01-01 5:00', '', '0', 'New']],
+  readAll: async () => [['A', 'John', '2026-01-01 5:00', '', '0', 'Not touched', 'N/A'], ['D', 'Ann', '2026-01-01 5:00', '2026-01-05 5:00', '2', 'Rejected']],
   appendObjects: async (o) => calls.append.push(...o),
   updateCells: async (c) => calls.cells.push(...c),
 };
-const lead = (id, name) => ({ id, name, phone: '+1', arrival: new Date('2026-01-01T00:00:00Z'), status: 'New' });
+const lead = (id, name, status = 'Follow up') => ({ id, name, phone: '+1', arrival: new Date('2026-01-01T00:00:00Z'), status });
 (async () => {
-  await syncLeadsTab([lead('A', 'John'), lead('C', 'Sam')],
+  await syncLeadsTab([lead('A', 'John'), lead('C', 'Sam'), lead('D', 'Ann', 'rejected')],
     (l) => ({ first: new Date('2026-01-05T00:00:00Z'), last: null, calls: 2 }),
     { openTab: async () => fakeTab }, {});
   assert.strictEqual(calls.append.length, 1);
   assert.strictEqual(calls.append[0]['Original ID'], 'C');
   assert.ok(!('Number' in calls.append[0]));
-  assert.deepStrictEqual(calls.cells.map((c) => c.key).sort(), ['Calls', 'First Contact Date']);
-  assert.ok(calls.cells.every((c) => c.row === 2));
+  const rowA = calls.cells.filter((c) => c.row === 2);
+  assert.deepStrictEqual(rowA.filter((c) => c.key).map((c) => c.key).sort(), ['Calls', 'First Contact Date']);
+  // status: Not touched (F) -> N/A (G) -> yangi Follow up keyingi bo'sh katakka (H = 7)
+  assert.deepStrictEqual(rowA.filter((c) => c.col !== undefined), [{ row: 2, col: 7, value: 'Follow up' }]);
+  // D: status o'zgarmagan (katta-kichik harf farqi hisobga olinmaydi) — hech narsa yozilmaydi
+  assert.strictEqual(calls.cells.filter((c) => c.row === 3).length, 0);
+  assert.strictEqual(calls.append[0]['Status'], 'Follow up');
   console.log('OK: barcha testlar o\'tdi');
 })().catch((e) => { console.error(e); process.exit(1); });

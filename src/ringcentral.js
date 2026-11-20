@@ -15,8 +15,13 @@ async function login() {
 }
 
 async function rcGet(url, params, heavy) {
-  const p = await login();
   for (let attempt = 0; attempt < 5; attempt++) {
+    // token eskirgan bo'lsa (soatiga bir), refresh qilish o'rniga JWT bilan qaytadan kiramiz
+    if (platform) {
+      const ok = await platform.loggedIn().catch(() => false);
+      if (!ok) platform = null;
+    }
+    const p = await login();
     if (heavy) {
       const wait = lastHeavy + HEAVY_GAP_MS - Date.now();
       if (wait > 0) await sleep(wait);
@@ -31,6 +36,17 @@ async function rcGet(url, params, heavy) {
         const ra = Number(err.response.headers.get('retry-after')) || 60;
         console.warn(`  RC 429, ${ra}s kutaman...`);
         await sleep(ra * 1000);
+        continue;
+      }
+      if (status >= 500 || !status && /ECONNRESET|ETIMEDOUT|ENOTFOUND|socket|network/i.test(err.message)) {
+        const w = 15 * (attempt + 1);
+        console.warn(`  RC ${status || 'tarmoq'} xato, ${w}s dan keyin qayta...`);
+        await sleep(w * 1000);
+        continue;
+      }
+      if (status === 401 || /refresh token|token.*(expired|invalid)/i.test(err.message)) {
+        console.warn('  RC sessiya eskirgan — qayta login...');
+        platform = null;
         continue;
       }
       throw err;

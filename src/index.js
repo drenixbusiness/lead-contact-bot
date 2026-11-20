@@ -30,8 +30,12 @@ async function syncLeadsTab(leads, contact, sheets, opts = {}) {
   const cId = tab.col('Original ID');
   if (cId === undefined) throw new Error(`"${tab.title}" tab'ida "Original ID" ustuni yo'q`);
 
+  const cStatus = tab.col('Status');
+  // Status tarixi: Status ustunidan o'ngga — har o'zgarishda keyingi bo'sh katak
+  const STATUS_HISTORY = 40;
   const existing = new Map();
-  (await tab.readAll()).forEach((v, i) => { if (v[cId]) existing.set(String(v[cId]), { row: i + 2, v }); });
+  (await tab.readAll(STATUS_HISTORY)).forEach((v, i) => { if (v[cId]) existing.set(String(v[cId]), { row: i + 2, v }); });
+  let statusChanges = 0;
 
   const appends = [];
   const cells = [];
@@ -39,15 +43,25 @@ async function syncLeadsTab(leads, contact, sheets, opts = {}) {
     const obj = buildRow(lead, contact(lead), tz);
     const ex = existing.get(lead.id);
     if (!ex) { appends.push(obj); continue; }
+    if (cStatus !== undefined && lead.status) {
+      const hist = (ex.v.slice(cStatus) || []).map((x) => String(x ?? '').trim());
+      let last = hist.length - 1;
+      while (last >= 0 && !hist[last]) last--;
+      const current = last >= 0 ? hist[last] : '';
+      if (current.toLowerCase() !== lead.status.trim().toLowerCase()) {
+        cells.push({ row: ex.row, col: cStatus + last + 1, value: lead.status });
+        statusChanges++;
+      }
+    }
     for (const [k, val] of Object.entries(obj)) {
-      if (k === 'Original ID') continue;
+      if (k === 'Original ID' || k === 'Status') continue;
       const c = tab.col(k);
       if (c === undefined) continue;
       if (String(ex.v[c] ?? '').trim() !== String(val ?? '').trim()) cells.push({ row: ex.row, key: k, value: val });
     }
   }
   const changedRows = new Set(cells.map((c) => c.row)).size;
-  console.log(`LEADS tab: jami ${leads.length} lead | yangi qo'shiladi: ${appends.length} | yangilanadi: ${changedRows} qator`);
+  console.log(`LEADS tab: jami ${leads.length} lead | yangi qo'shiladi: ${appends.length} | yangilanadi: ${changedRows} qator | status o'zgardi: ${statusChanges}`);
   if (opts.dry) return { appends: appends.length, updated: changedRows };
 
   await tab.updateCells(cells);
